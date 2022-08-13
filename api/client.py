@@ -4,6 +4,7 @@ API Client Module
 from __future__ import annotations
 from typing import Any
 import time
+import uuid
 import math
 import json
 import logging
@@ -58,7 +59,8 @@ class Client():
         params = {
             'response_type': 'code',
             'client_id': self.client_id,
-            'redirect_uri': redirect_uri
+            'redirect_uri': redirect_uri,
+            'state': str(uuid.uuid4())
         }
         encoded_params = urlencode(params)
         url = f'{self.auth_url}/authorization?{encoded_params}'
@@ -71,14 +73,18 @@ class Client():
 
     def exchange_code(self, redirect_uri, code):
         """Exchange code"""
+        headers = {
+            'accept': 'application/json',
+            'content-type': 'application/x-www-form-urlencoded'
+        }
         params = {
+            'grant_type': 'authorization_code',
             'client_id': self.client_id,
             'client_secret': self.client_secret,
             'code': code,
-            'grant_type': 'authorization_code',
             'redirect_uri': redirect_uri
         }
-        return self._token(self._post('/oauth/token', params=params))
+        return self._token(self._post('/oauth/token', params=params, headers=headers))
 
     def refresh_token(self):
         """Refresh token"""
@@ -228,7 +234,7 @@ class Client():
         return self._get(f'/categories/{category_id}')
 
     @valid_token
-    def get_category_attributes(self, category_id):
+    def get_category_attributes(self, category_id: str):
         """Displays attributes and rules over them in order to
         describe the items that are stored in each category.
         Args:
@@ -275,7 +281,7 @@ class Client():
                 self.get_leaf_categories(category, accumulator)
 
     @valid_token
-    def search_items(self, site_id, params: dict) -> dict:
+    def search_items(self, site_id: str, params: dict) -> dict:
         """Returns a dict containing the search result
             Args:
                 params:
@@ -285,7 +291,7 @@ class Client():
         return self._get(f'/sites/{site_id}/search', params=params)
 
     @valid_token
-    def get_items(self, site_id, params: dict, total: int, limit: int, quota: int) -> list[dict]:
+    def get_items(self, site_id: str, params: dict, total: int, limit: int, quota: int) -> list[dict]:
         """Returns a list of items according query parameters.
             Args:
                 params:
@@ -315,11 +321,6 @@ class Client():
             self.expires_at = expires_at
         return response
 
-    # def _token(self, response):
-    #     if 'expires_at' in response:
-    #         self.expires_at = response['expires_at']
-    #     return response
-
     def _post(self, endpoint, **kwargs):
         return self._request('POST', endpoint, **kwargs)
 
@@ -327,11 +328,15 @@ class Client():
         return self._request('GET', endpoint, **kwargs)
 
     def _request(self, method, endpoint, params=None, **kwargs):
-        _headers = CaseInsensitiveDict()
-        _headers["Accept"] = "application/json"
-        _headers["Authorization"] = f"Bearer {self.access_token}"
+        headers = kwargs.pop('headers', {})
+        if self.access_token:
+            _headers = {
+                'accept': 'application/json',
+                'authorization': f'Bearer {self.access_token}'
+            }
+            headers.update(_headers)
         url = self.BASE_URL + endpoint
-        r = requests.request(method, url, params=params, headers=_headers, **kwargs)
+        r = requests.request(method, url, params=params, headers=headers, **kwargs)
         return self._parse(r)
 
     def _parse(self, response):
