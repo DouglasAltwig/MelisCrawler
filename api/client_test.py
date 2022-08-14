@@ -19,8 +19,7 @@ class TestClient(unittest.TestCase):
         authorization_url = cls.api.authorization_url(redirect_uri)
         print(f'Please go to the following url and authorize access: {authorization_url}')
         authorization_response = input('Enter the full callback URL: ')
-        params = cls.api.urlparse(authorization_response)
-        token = cls.api.exchange_code(redirect_uri, params['code'])
+        token = cls.api.exchange_code(authorization_response)
         cls.api.set_token(token)
 
     def setUp(self):
@@ -36,13 +35,12 @@ class TestClient(unittest.TestCase):
             'redirect_uri': self.redirect_uri
         }
         query_params = dict(parse_qsl(urlparse(authorization_url).query))
-        self.assertDictEqual(params, query_params)
+        self.assertDictContainsSubset(params, query_params)
 
-    def test_authorization_response(self):
-        authorization_response = 'https://ml-data-analytics.herokuapp.com/redirect?code=TG-62f6ad2dba7875000182eecc-233095538&state=334234ce-0b80-4519-a67d-9d736af1f5ad'
-        params = TestClient.api.urlparse(authorization_response)
-        expected = {'code': 'TG-62f6ad2dba7875000182eecc-233095538', 'state': '334234ce-0b80-4519-a67d-9d736af1f5ad'}
-        self.assertDictEqual(params, expected)
+    def test_me(self):
+        me = TestClient.api.me()
+        expected = ['id', 'nickname', 'registration_date', 'first_name', 'last_name']
+        self.assertGreaterEqual(list(me.keys()), expected)
 
     def test_get_sites(self):
         expected_sites = [
@@ -205,7 +203,6 @@ class TestClient(unittest.TestCase):
         category_id = item_search['filters'][0]['values'][0]['id']
         limit = item_search['paging']['limit']
         quota = 10000
-
         items = TestClient.api.get_items('MLB', {'category': category_id}, total, limit, quota)
         self.assertAlmostEqual(total, len(items), None, '', total*0.05)
 
@@ -216,7 +213,6 @@ class TestClient(unittest.TestCase):
         category_id = item_search['filters'][0]['values'][0]['id']
         limit = item_search['paging']['limit']
         quota = 10000
-        
         items = TestClient.api.get_items('MLB', {'category': category_id}, total, limit, quota)
         self.assertAlmostEqual(total, len(items), None, '', total*0.05)
 
@@ -230,4 +226,7 @@ class TestClient(unittest.TestCase):
         contains_values = any('values' in attribute for attribute in attributes )
         self.assertTrue(contains_values)
 
+    def test_refresh_token(self):
+        pass
+    
 unittest.main(argv=[''], verbosity=2, exit=False)
