@@ -6,18 +6,8 @@ from typing import Any
 import time
 import uuid
 import math
-import json
-import logging
-from logging.config import fileConfig
-from urllib.parse import urlencode, parse_qsl, urlsplit
-import requests
-from requests.structures import CaseInsensitiveDict
-
+from requests_oauthlib import OAuth2Session
 from exceptions import InvalidSite
-from decorators import valid_token
-
-fileConfig('logging_config.ini')
-logger = logging.getLogger(__name__)
 
 
 class Client():
@@ -44,77 +34,75 @@ class Client():
         }
         self.client_id = client_id
         self.client_secret = client_secret
-        self.access_token = None
-        self._refresh_token = None
-        self.user_id = None
-        self.expires_in = None
-        self.expires_at = None
+        self.oauth = None
+        self.token = None
+        self.client = None
         try:
             self.auth_url = self.auth_urls[site]
         except KeyError as e:
             raise InvalidSite from e
 
     def authorization_url(self, redirect_uri: str) -> str:
-        """URL"""
-        params = {
-            'response_type': 'code',
-            'client_id': self.client_id,
-            'redirect_uri': redirect_uri,
-            'state': str(uuid.uuid4())
-        }
-        encoded_params = urlencode(params)
-        url = f'{self.auth_url}/authorization?{encoded_params}'
-        return url
+        """Returns the authorization url
+            Args:
+                redirect_uri:
+            Returns:
+                A string
+        """
+        self.oauth = OAuth2Session(self.client_id, redirect_uri=redirect_uri)
+        state = str(uuid.uuid4())
+        auth_base_url = f'{self.auth_url}/authorization'
+        auth_url, state = self.oauth.authorization_url(auth_base_url, state=state)
+        return auth_url
 
-    def urlparse(self, url):
-        """Parse url"""
-        params = dict(parse_qsl(urlsplit(url).query))
-        return params
+    def exchange_code(self, auth_response: str) -> dict:
+        """Returns a token
+            Args:
+                auth_response:
+            Returns:
+                A dict
+        """
+        token_url = self.BASE_URL + "/oauth/token"
+        token = self.oauth.fetch_token(
+            token_url,
+            include_client_id=True,
+            client_secret=self.client_secret,
+            authorization_response=auth_response)
+        return token
 
-    def exchange_code(self, redirect_uri, code):
-        """Exchange code"""
-        headers = {
-            'accept': 'application/json',
-            'content-type': 'application/x-www-form-urlencoded'
-        }
-        params = {
-            'grant_type': 'authorization_code',
+    def _save_token(self, token: dict) -> None:
+        self.token = token
+
+    def set_token(self, token: dict) -> None:
+        """Sets token for a new OAuth2Session
+            Args:
+                token:
+            Returns:
+                None
+        """
+        token_url = self.BASE_URL + '/oauth/token'
+        extra = {
             'client_id': self.client_id,
             'client_secret': self.client_secret,
-            'code': code,
-            'redirect_uri': redirect_uri
         }
-        return self._token(self._post('/oauth/token', params=params, headers=headers))
+        self.client = OAuth2Session(
+            self.client_id,
+            token=token,
+            auto_refresh_url=token_url,
+            auto_refresh_kwargs=extra,
+            token_updater=self._save_token
+        )
+        self.token = token
 
-    def refresh_token(self):
-        """Refresh token"""
-        params = {
-            'client_id': self.client_id,
-            'client_secret': self.client_secret,
-            'grant_type': 'refresh_token',
-            'refresh_token': self._refresh_token
-        }
-        return self._token(self._post('/oauth/token', params=params))
+    def is_valid_token(self, token: str) -> bool:
+        """Verifies if the token will expires in a future point in time.
+            Args:
+                token:
+            Returns:
+                A boolean value
+        """
+        return token['expires_at'] > time.time()
 
-    def set_token(self, token):
-        """Set token"""
-        if isinstance(token, dict):
-            self.access_token = token.get('access_token', None)
-            self._refresh_token = token.get('refresh_token', None)
-            self.user_id = token.get('user_id', None)
-            self.expires_in = token.get('expires_in', None)
-            self.expires_at = token.get('expires_at', None)
-        else:
-            self.access_token = token
-
-    @property
-    def is_valid_token(self):
-        """Valid token"""
-        if self.expires_at:
-            return self.expires_at > time.time()
-        return None
-
-    @valid_token
     def me(self) -> dict[str, Any]:
         """Returns account information about the authenticated user.
 
@@ -123,7 +111,6 @@ class Client():
         """
         return self._get('/users/me')
 
-    @valid_token
     def get_user(self, user_id:str) -> dict[str, Any]:
         """User account information.
         Args:
@@ -133,7 +120,6 @@ class Client():
         """
         return self._get(f'/users/{user_id}')
 
-    @valid_token
     def get_user_address(self, user_id:str) -> dict[str, Any]:
         """Returns addresses registered by the user.
         Args:
@@ -143,7 +129,6 @@ class Client():
         """
         return self._get(f'/users/{user_id}/addresses')
 
-    @valid_token
     def get_user_accepted_payment_methods(self, user_id:str) -> list[dict[str, Any]]:
         """Returns payment methods accepted by a seller to collect its operations.
         Args:
@@ -153,7 +138,6 @@ class Client():
         """
         return self._get(f'/users/{user_id}/accepted_payment_methods')
 
-    @valid_token
     def get_application(self, application_id:str) -> dict[str, Any]:
         """Returns information about the application.
         Args:
@@ -163,7 +147,6 @@ class Client():
         """
         return self._get(f'/applications/{application_id}')
 
-    @valid_token
     def get_user_brands(self, user_id:str):
         """This resource retrieves brands associated to an user_id.
         The official_store_id attribute identifies a store.
@@ -174,7 +157,6 @@ class Client():
         """
         return self._get(f'/users/{user_id}/brands')
 
-    @valid_token
     def get_user_classifields_promotion_packs(self, user_id):
         """Manage user promotion packs.
         Args:
@@ -184,7 +166,6 @@ class Client():
         """
         return self._get(f'/users/{user_id}/classifieds_promotion_packs')
 
-    @valid_token
     def get_sites(self) -> list[dict[str, str]]:
         """Retrieves information about the sites where MercadoLibre runs.
         Returns:
@@ -192,7 +173,6 @@ class Client():
         """
         return self._get('/sites')
 
-    @valid_token
     def get_listing_types(self, site_id:str) -> list[dict[str, str]]:
         """Returns information about listing types.
         Args:
@@ -202,7 +182,6 @@ class Client():
         """
         return self._get(f'/sites/{site_id}/listing_types')
 
-    @valid_token
     def get_listing_exposures(self, site_id:str) -> list[dict[str, str|int|bool]]:
         """Returns different exposure levels associated with all listing types in MercadoLibre.
         Args:
@@ -212,7 +191,6 @@ class Client():
         """
         return self._get(f'/sites/{site_id}/listing_exposures')
 
-    @valid_token
     def get_categories(self, site_id: str) -> list[dict[str, str]]:
         """	Returns available categories in the site.
         Args:
@@ -223,7 +201,6 @@ class Client():
         response = self._get(f'/sites/{site_id}/categories')
         return response
 
-    @valid_token
     def get_category(self, category_id:str) -> dict[str, Any]:
         """Returns information about a category.
         Args:
@@ -233,7 +210,6 @@ class Client():
         """
         return self._get(f'/categories/{category_id}')
 
-    @valid_token
     def get_category_attributes(self, category_id: str):
         """Displays attributes and rules over them in order to
         describe the items that are stored in each category.
@@ -244,7 +220,6 @@ class Client():
         """
         return self._get(f'/categories/{category_id}/attributes')
 
-    @valid_token
     def get_currencies(self):
         """	Returns information about all available currencies in MercadoLibre.
         Returns:
@@ -252,7 +227,6 @@ class Client():
         """
         return self._get('/currencies')
 
-    @valid_token
     def get_currency(self, currency_id):
         """Returns information about available currencies in MercadoLibre by currency_id.
         Args:
@@ -262,7 +236,6 @@ class Client():
         """
         return self._get(f'/currencies/{currency_id}')
 
-    @valid_token
     def get_leaf_categories(self, category: dict, accumulator: list) -> list[dict]:
         """Returns a list of leaf categories
             Args:
@@ -280,7 +253,6 @@ class Client():
                 category = self._get(f'/categories/{category_id}')
                 self.get_leaf_categories(category, accumulator)
 
-    @valid_token
     def search_items(self, site_id: str, params: dict) -> dict:
         """Returns a dict containing the search result
             Args:
@@ -290,7 +262,6 @@ class Client():
         """
         return self._get(f'/sites/{site_id}/search', params=params)
 
-    @valid_token
     def get_items(self, site_id: str, params: dict, total: int, limit: int, quota: int) -> list[dict]:
         """Returns a list of items according query parameters.
             Args:
@@ -309,17 +280,8 @@ class Client():
             try:
                 items.extend(r['results'])
             except KeyError:
-                logger.error('url: %s, response: %s',
-                             f'/sites/{site_id}/search', json.dumps(params))
+                pass
         return items
-
-    def _token(self, response):
-        if 'expires_in' in response:
-            expires_in = response['expires_in']
-            expires_at = time.time() + int(expires_in)
-            response['expires_at'] = expires_at
-            self.expires_at = expires_at
-        return response
 
     def _post(self, endpoint, **kwargs):
         return self._request('POST', endpoint, **kwargs)
@@ -327,16 +289,9 @@ class Client():
     def _get(self, endpoint, **kwargs):
         return self._request('GET', endpoint, **kwargs)
 
-    def _request(self, method, endpoint, params=None, **kwargs):
-        headers = kwargs.pop('headers', {})
-        if self.access_token:
-            _headers = {
-                'accept': 'application/json',
-                'authorization': f'Bearer {self.access_token}'
-            }
-            headers.update(_headers)
+    def _request(self, method, endpoint, **kwargs):
         url = self.BASE_URL + endpoint
-        r = requests.request(method, url, params=params, headers=headers, **kwargs)
+        r = self.client.request(method, url, **kwargs)
         return self._parse(r)
 
     def _parse(self, response):
