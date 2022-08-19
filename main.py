@@ -14,7 +14,6 @@ from logging.config import fileConfig
 from dotenv import load_dotenv
 from tqdm.contrib.concurrent import thread_map
 from api import client as api_client
-from api.utils import is_valid_token
 from db import client as db_client
 from utils.utils import format_categories, format_items
 from utils.utils import optimize_filters, get_filter_combinations
@@ -40,14 +39,13 @@ db = db_client.Client(host, database, user, password)
 api = api_client.Client(client_id, client_secret, SITE_ID)
 
 token = db.load_token()
-if is_valid_token(token):
+if api.is_valid_token(token):
     api.set_token(token)
 else:
     authorization_url = api.authorization_url(redirect_uri)
     print(f'Please go to the following url and authorize access: {authorization_url}')
     authorization_response = input('Enter the full callback URL: ')
-    params = api.urlparse(authorization_response)
-    token = api.exchange_code(redirect_uri, params['code'])
+    token = api.exchange_code(authorization_response)
     api.set_token(token)
     db.save_token(token)
 
