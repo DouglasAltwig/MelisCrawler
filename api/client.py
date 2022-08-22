@@ -236,6 +236,21 @@ class Client():
         """
         return self._get(f'/currencies/{currency_id}')
 
+    def get_category_tree(self, category: dict, accumulator: list):
+        """Returns a list of categories
+            Args:
+                category:
+                accumulator:
+            Returns:
+                A list of dict
+        """
+        children_categories = category['children_categories']
+        for child_category in children_categories:
+            category_id = child_category["id"]
+            category = self._get(f'/categories/{category_id}')
+            accumulator.append(category)
+            self.get_category_tree(category, accumulator)
+
     def get_leaf_categories(self, category: dict, accumulator: list) -> list[dict]:
         """Returns a list of leaf categories
             Args:
