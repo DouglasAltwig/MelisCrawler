@@ -1,5 +1,6 @@
 """Module utils provides helper functions for a clean program flow."""
 from __future__ import annotations
+import itertools
 import json
 
 def optimize_filters(available_filters: list[dict], total_items: int) -> list[dict]:
@@ -30,18 +31,23 @@ def get_filter_combinations(available_filters: list[dict], available_sorts: list
         Returns:
             A list of dict
     """
-    filters = []
+    filters = {}
     for available_filter in available_filters:
         for value in available_filter['values']:
-            filters.append({available_filter['id']: value['id']})
-
-    sorts = []
-    for available_sort in available_sorts:
-        sorts.append({'sort': available_sort['id']})
-
-    combo = [{**f,**s} for s in sorts for f in filters]
+            if available_filter['id'] in filters:
+                filters[available_filter['id']].append(value['id'])
+            else:
+                filters[available_filter['id']] = [value['id']]
     
-    return combo
+    for available_sort in available_sorts:
+        if 'sort' in filters:
+            filters['sort'].append(available_sort['id'])
+        else:
+            filters['sort'] = [available_sort['id']]
+    
+    keys = filters.keys()
+    vals = filters.values()
+    return [dict(zip(keys, instance)) for instance in itertools.product(*vals)]
 
 def format_items(items, today):
     """Returns a list of tuples with site_id, item_id, last_run, category_id and item_json.
