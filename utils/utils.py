@@ -72,10 +72,14 @@ def get_filter_generator(available_filters: list[dict], available_sorts: list[di
         else:
             filters['sort'] = [available_sort['id']]
     
-    keys = filters.keys()
-    vals = filters.values()
-    for instance in itertools.product(*vals):
-        yield dict(zip(keys, instance))
+    for it in range(1, len(filters) + 1):
+        for item in map(dict, itertools.combinations(filters.items(), it)):
+            
+            keys = item.keys()
+            vals = item.values()
+
+            for instance in itertools.product(*vals):
+                yield dict(zip(keys, instance))
 
 def format_items(items, today):
     """Returns a list of tuples with site_id, item_id, last_run, category_id and item_json.
