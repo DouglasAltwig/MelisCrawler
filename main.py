@@ -31,8 +31,8 @@ user = os.environ.get('user')
 password = os.environ.get('password')
 
 SITE_ID = "MLB"
-API_REQUEST_QUOTA = 10000
-DISTINCT_ITEMS_THRESHOLD = 0.98
+API_REQUEST_QUOTA = 4000
+DISTINCT_ITEMS_THRESHOLD = 0.96
 TODAY = datetime.today().strftime('%Y-%m-%d')
 
 db = db_client.Client(host, database, user, password)
@@ -51,10 +51,10 @@ else:
 
 def crawl_categories(base_category):
     """Crawl categories"""
-    leaf_categories = []
+    categories = []
     category = api.get_category(base_category['id'])
-    api.get_leaf_categories(category, leaf_categories)
-    return leaf_categories
+    api.get_category_tree(category, categories)
+    return categories
 
 def crawl_items(category):
     """Downloads the spcified items from the API and save the data to database"""
@@ -69,7 +69,6 @@ def crawl_items(category):
     if total_items <= API_REQUEST_QUOTA:
         iterations = math.ceil(total_items/limit)
         params = [{'category':category_id,'offset':i*limit,'limit':limit} for i in range(iterations)]
-        # searches = list(thread_map(partial_search_items, params, desc="Crawling items without filters: "))
         searches = list(map(partial_search_items, params))
         items = []
         for search in searches:
@@ -92,7 +91,6 @@ def crawl_items(category):
             iterations = min(math.ceil(total_items/limit), math.ceil(API_REQUEST_QUOTA/limit))
             params = [{**{'category': category_id, 'offset': i*limit,
                           'limit': limit}, **filter_combination} for i in range(iterations)]
-            # searches = list(thread_map(partial_search_items, params, desc="Crawling items with filters: "))
             searches = list(map(partial_search_items, params))
             items = []
             for search in searches:
@@ -106,6 +104,7 @@ def crawl_items(category):
 
             if numb_distinct_items >= total_items * DISTINCT_ITEMS_THRESHOLD:
                 break
+
 def main():
     """
     The flow to obtain the seller's information starts with the selection of broad base
@@ -119,29 +118,23 @@ def main():
     seller's reputation on Mercado Livre.
     """
     
-
     logger.info('Starting the crawler on %s', TODAY)
 
     base_categories = api.get_categories(SITE_ID)
     formated_base_categories = format_categories(base_categories, TODAY)
     db.insert_bulk_base_categories(formated_base_categories)
 
-    logger.info('The base_categories list contains %s element(s)',
-                    len(base_categories))
+    logger.info('The base_categories list contains %s element(s)', len(base_categories))
 
     # max_workers=8
-    leaf_categories = thread_map(
+    categories = thread_map(
         crawl_categories, base_categories, max_workers=4, desc='Crawling categories: ')[0]
-    formated_leaf_categories = format_categories(leaf_categories, TODAY)
-    db.insert_bulk_categories(formated_leaf_categories)
+    formated_categories = format_categories(categories, TODAY)
+    db.insert_bulk_categories(formated_categories)
 
-    logger.info('The leaf_categories list contains %s element(s)',
-                len(leaf_categories))
+    logger.info('The categories list contains %s element(s)', len(categories))
 
-    
-
-    # leaf_categories = [api.get_category('MLB1384')]
-    thread_map(crawl_items, leaf_categories, desc='Crawling items: ')
+    thread_map(crawl_items, categories, desc='Crawling items: ')
 
 if __name__ == "__main__":
     fileConfig('logging_config.ini')
