@@ -1,5 +1,7 @@
 -- CREATE INDEX idx_btree_seller_id ON public.items USING BTREE ((item_json -> 'seller' ->> 'id'));
 -- CREATE INDEX idx_btree_seller_transactions_completed ON public.items USING BTREE ((item_json -> 'seller' -> 'seller_reputation' -> 'transactions' ->> 'completed'));
+-- CREATE INDEX idx_btree_order_backend on public.items USING BTREE ((item_json->>'order_backend'));
+-- CREATE INDEX idx_items ON public.items USING BTREE (site_id, item_id, last_run, category_id, (item_json->>'order_backend'));
 
 -- SELECT * FROM public.items LIMIT 1;
 -- SELECT DISTINCT ON(site_id, item_id, last_run, category_id, item_json ->> 'id') * FROM public.items LIMIT 10;
