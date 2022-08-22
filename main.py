@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from tqdm.contrib.concurrent import thread_map
 from api import client as api_client
 from db import client as db_client
-from utils.utils import format_categories, format_items
+from utils.utils import format_categories, format_items, get_filter_generator
 from utils.utils import optimize_filters, get_filter_combinations
 
 
@@ -59,8 +59,6 @@ def crawl_categories(base_category):
 def crawl_items(category):
     """Downloads the spcified items from the API and save the data to database"""
     item_search = api.search_items(SITE_ID, {'category': category['id']})
-    available_filters = item_search['available_filters']
-    available_sorts = item_search['available_sorts']
     total_items = item_search['paging']['total']
     limit = item_search['paging']['limit']
     category_id = item_search['filters'][0]['values'][0]['id']
@@ -78,8 +76,10 @@ def crawl_items(category):
         db.insert_bulk_items(formated_items)
 
     else:
+        available_filters = item_search['available_filters']
+        available_sorts = item_search['available_sorts']
         optimized_filters = optimize_filters(available_filters, total_items)
-        filter_combinations = get_filter_combinations(optimized_filters, available_sorts)
+        filter_combinations = get_filter_generator(optimized_filters, available_sorts)
 
         for filter_combination in filter_combinations:
     
@@ -87,23 +87,24 @@ def crawl_items(category):
             item_search = api.search_items(SITE_ID, params)
             total_items = item_search['paging']['total']
             limit = item_search['paging']['limit']
-
-            iterations = min(math.ceil(total_items/limit), math.ceil(API_REQUEST_QUOTA/limit))
-            params = [{**{'category': category_id, 'offset': i*limit,
-                          'limit': limit}, **filter_combination} for i in range(iterations)]
-            searches = list(map(partial_search_items, params))
-            items = []
-            for search in searches:
-                if 'results' in search:
-                    items.extend(search['results'])
             
-            formated_items = format_items(items, TODAY)
-            db.insert_bulk_items(formated_items)
+            if total_items > 0:
 
-            numb_distinct_items = db.count_disctinct_items(SITE_ID, category_id[3:], TODAY)
+                iterations = min(math.ceil(total_items/limit), math.ceil(API_REQUEST_QUOTA/limit))
+                params = [{**{'category': category_id, 'offset': i*limit,
+                            'limit': limit}, **filter_combination} for i in range(iterations)]
+                searches = list(map(partial_search_items, params))
+                items = []
+                for search in searches:
+                    if 'results' in search:
+                        items.extend(search['results'])
+                
+                formated_items = format_items(items, TODAY)
+                db.insert_bulk_items(formated_items)
 
-            if numb_distinct_items >= total_items * DISTINCT_ITEMS_THRESHOLD:
-                break
+                numb_distinct_items = db.count_disctinct_items(SITE_ID, category_id[3:], TODAY)
+                if numb_distinct_items >= total_items * DISTINCT_ITEMS_THRESHOLD:
+                    break
 
 def main():
     """
