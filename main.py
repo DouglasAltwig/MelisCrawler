@@ -142,4 +142,4 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     print("Welcome to Meli's Crawler.")
     main()
-    print('Finished!')
+    print('Finished!!!')
